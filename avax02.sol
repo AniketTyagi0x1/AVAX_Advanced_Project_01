@@ -28,6 +28,10 @@ contract Vault {
     uint public totalSupply;
     mapping(address => uint) public balanceOf;
 
+    event Deposit(address indexed user, uint amount, uint shares);
+    event Withdraw(address indexed user, uint shares, uint amount);
+    event Approval(address indexed owner, address indexed spender, uint value);
+
     constructor(address _token) {
         token = IERC20(_token);
     }
@@ -42,42 +46,43 @@ contract Vault {
         balanceOf[_from] -= _shares;
     }
 
+    function approve(uint _amount) external {
+        require(_amount > 0, "Amount must be greater than zero");
+        require(token.approve(address(this), _amount), "Approval failed");
+        emit Approval(msg.sender, address(this), _amount);
+    }
+
     function deposit(uint _amount) external {
-        /*
-        a = amount
-        B = balance of token before deposit
-        T = total supply
-        s = shares to mint
+        require(_amount > 0, "Amount must be greater than zero");
+        require(token.allowance(msg.sender, address(this)) >= _amount, "Allowance not sufficient");
+        require(token.balanceOf(msg.sender) >= _amount, "Insufficient token balance");
 
-        (T + s) / T = (a + B) / B 
-
-        s = aT / B
-        */
         uint shares;
+        uint tokenBalance = token.balanceOf(address(this));
         if (totalSupply == 0) {
             shares = _amount;
         } else {
-            shares = (_amount * totalSupply) / token.balanceOf(address(this));
+            require(tokenBalance > 0, "Token balance must be greater than zero");
+            shares = (_amount * totalSupply) / tokenBalance;
         }
 
         _mint(msg.sender, shares);
-        token.transferFrom(msg.sender, address(this), _amount);
+        require(token.transferFrom(msg.sender, address(this), _amount), "Transfer failed");
+
+        emit Deposit(msg.sender, _amount, shares);
     }
 
     function withdraw(uint _shares) external {
-        /*
-        a = amount
-        B = balance of token before withdraw
-        T = total supply
-        s = shares to burn
+        require(_shares > 0, "Shares must be greater than zero");
+        require(balanceOf[msg.sender] >= _shares, "Insufficient shares");
 
-        (T - s) / T = (B - a) / B 
+        uint tokenBalance = token.balanceOf(address(this));
+        require(tokenBalance > 0, "Token balance must be greater than zero");
 
-        a = sB / T
-        */
-        uint amount = (_shares * token.balanceOf(address(this))) / totalSupply;
+        uint amount = (_shares * tokenBalance) / totalSupply;
         _burn(msg.sender, _shares);
-        token.transfer(msg.sender, amount);
+        require(token.transfer(msg.sender, amount), "Transfer failed");
+
+        emit Withdraw(msg.sender, _shares, amount);
     }
 }
-
